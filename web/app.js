@@ -692,7 +692,7 @@ const PDFViewerApplication = {
       const queryString = document.location.search.substring(1);
       const params = parseQueryString(queryString);
       file = params.get("file") ?? AppOptions.get("defaultUrl");
-      validateFileURL(file);
+      //validateFileURL(file);
     } else if (PDFJSDev.test("MOZCENTRAL")) {
       file = window.location.href;
     } else if (PDFJSDev.test("CHROME")) {
@@ -2254,6 +2254,7 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
     "https://mozilla.github.io",
   ];
   // eslint-disable-next-line no-var
+  /*
   var validateFileURL = function (file) {
     if (!file) {
       return;
@@ -2278,6 +2279,7 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       throw ex;
     }
   };
+  */
 
   // eslint-disable-next-line no-var
   var onFileInputChange = function (evt) {

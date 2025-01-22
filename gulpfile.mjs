@@ -650,12 +650,10 @@ function createStandardFontBundle() {
 }
 
 function createWasmBundle() {
-  return ordered([
-    gulp.src(["external/openjpeg/*.wasm"], {
-      base: "external/openjpeg",
-      encoding: false,
-    }),
-  ]);
+  return gulp.src(["external/openjpeg/openjpeg.wasm"], {
+    base: "external/openjpeg",
+    encoding: false,
+  });
 }
 
 function checkFile(filePath) {
@@ -2079,15 +2077,6 @@ gulp.task(
   )
 );
 
-gulp.task("dev-wasm", function () {
-  const VIEWER_WASM_OUTPUT = "web/wasm/";
-
-  fs.rmSync(VIEWER_WASM_OUTPUT, { recursive: true, force: true });
-  fs.mkdirSync(VIEWER_WASM_OUTPUT, { recursive: true });
-
-  return createWasmBundle().pipe(gulp.dest(VIEWER_WASM_OUTPUT));
-});
-
 gulp.task(
   "dev-sandbox",
   gulp.series(
@@ -2123,13 +2112,6 @@ gulp.task(
         gulp.series("locale")
       );
     },
-    function watchWasm() {
-      gulp.watch(
-        "external/openjpeg/*",
-        { ignoreInitial: false },
-        gulp.series("dev-wasm")
-      );
-    },
     function watchDevSandbox() {
       gulp.watch(
         [
@@ -2158,7 +2140,39 @@ gulp.task(
       }
 
       const { WebServer } = await import("./test/webserver.mjs");
-      const server = new WebServer({ port });
+      const server = new WebServer({ 
+        port,
+        hooks: {
+          GET: [
+            (url, request, response) => {
+              // Add comprehensive CORS headers for all requests
+              response.setHeader("Access-Control-Allow-Origin", "*");
+              response.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS, HEAD");
+              response.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, Accept, Accept-Language, Content-Language, Content-Length");
+              response.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+              
+              // Handle preflight requests
+              if (request.method === "OPTIONS") {
+                response.writeHead(204);
+                response.end();
+                return true;
+              }
+
+              // Handle HEAD requests (PDF.js uses these to check for range support)
+              if (request.method === "HEAD") {
+                response.writeHead(200, {
+                  "Accept-Ranges": "bytes",
+                  "Content-Type": "application/pdf",
+                });
+                response.end();
+                return true;
+              }
+
+              return false;
+            }
+          ]
+        }
+      });
       server.start();
     }
   )

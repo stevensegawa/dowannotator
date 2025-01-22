@@ -22,6 +22,7 @@ import fsPromises from "fs/promises";
 import http from "http";
 import path from "path";
 import { pathToFileURL } from "url";
+import { createClient } from '@supabase/supabase-js';
 
 const MIME_TYPES = {
   ".css": "text/css",
@@ -56,6 +57,11 @@ class WebServer {
       GET: [crossOriginHandler, redirectHandler],
       POST: [],
     };
+
+    // Add Supabase configuration
+    const supabaseUrl = 'https://kazsquqfjxrkpzelptxv.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthenNxdXFmanhya3B6ZWxwdHh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcxMDA5MTgsImV4cCI6MjA1MjY3NjkxOH0.s1aKodToiu4SBPjM6fWI1SEEpHvc7eOY8addbJNm-Yo';
+    this.supabase = createClient(supabaseUrl, supabaseKey);
   }
 
   start(callback) {
@@ -90,6 +96,15 @@ class WebServer {
     // is equivalent to http://HOST:PORT/etc/passwd.
     const url = new URL(`http://${this.host}:${this.port}${request.url}`);
 
+    // Handle file uploads and deletes
+    if (url.pathname === "/upload") {
+      this.#handleUpload(request, response);
+      return;
+    } else if (url.pathname === "/delete") {
+      this.#handleDelete(request, response);
+      return;
+    }
+
     // Validate the request method and execute method hooks.
     const methodHooks = this.hooks[request.method];
     if (!methodHooks) {
@@ -110,6 +125,27 @@ class WebServer {
   }
 
   async #checkRequest(request, response, url) {
+    // Special handling for /web/pdfs/ directory
+    if (url.pathname === "/web/pdfs/" || url.pathname === "/web/pdfs") {
+      if (!url.pathname.endsWith("/")) {
+        response.setHeader("Location", `/web/pdfs/${url.search}`);
+        response.writeHead(301);
+        response.end("Redirected", "utf8");
+        return;
+      }
+      await this.#serveDirectoryIndex(response, url);
+      return;
+    }
+
+    // Handle file uploads and deletes
+    if (url.pathname === "/upload") {
+      await this.#handleUpload(request, response);
+      return;
+    } else if (url.pathname === "/delete") {
+      await this.#handleDelete(request, response);
+      return;
+    }
+
     const localURL = new URL(`.${url.pathname}`, this.rootURL);
 
     // Check if the file/folder exists.
@@ -193,47 +229,130 @@ class WebServer {
     this.#serveFile(response, localURL, fileSize);
   }
 
-  async #serveDirectoryIndex(response, url, localUrl) {
+  async #serveDirectoryIndex(response, url) {
     response.setHeader("Content-Type", "text/html");
     response.writeHead(200);
 
-    if (url.searchParams.has("frame")) {
-      response.end(
-        `<html>
-          <frameset cols=*,200>
-            <frame name=pdf>
-            <frame src="${url.pathname}?side">
-          </frameset>
-        </html>`,
-        "utf8"
-      );
-      return;
-    }
-
-    let files;
+    let files = [];
     try {
-      files = await fsPromises.readdir(localUrl);
-    } catch {
-      response.end();
-      return;
+      // List files from Supabase storage
+      const { data, error } = await this.supabase.storage
+        .from('pdfs')
+        .list('', {
+          limit: 100,
+          offset: 0,
+          sortBy: { column: 'name', order: 'asc' }
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      files = data || [];
+    } catch (error) {
+      console.error("Error listing files:", error);
     }
 
-    response.write(
-      `<html>
-         <head>
-           <meta charset="utf-8">
-         </head>
-         <body>
-           <h1>Index of ${url.pathname}</h1>`
-    );
-    if (url.pathname !== "/") {
-      response.write('<a href="..">..</a><br>');
-    }
+    response.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Defenders of Wildlife Document Annotator</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+          }
+          h1 {
+            color: #0056b3;
+          }
+          .upload-form {
+            margin: 20px 0;
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .upload-form input[type="file"] {
+            margin-right: 10px;
+          }
+          .file-list {
+            margin: 20px 0;
+          }
+          .file-item {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+          .file-item a {
+            color: #0056b3;
+            text-decoration: none;
+            font-weight: bold;
+            flex-grow: 1;
+          }
+          .file-item a:hover {
+            text-decoration: underline;
+          }
+          .delete-button {
+            margin-left: auto;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+          }
+          .delete-button:hover {
+            background-color: #004494;
+          }
+          #uploadMessage {
+            color: red;
+            margin-top: 10px;
+          }
+        </style>
+      </head>
+      <body>
+      <h1>Defenders of Wildlife Document Annotator</h1>`);
 
-    const all = url.searchParams.has("all");
+    // Add upload form
+    response.write(`
+      <div class="upload-form">
+        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+          <input type="file" name="pdf" accept=".pdf" required>
+          <input type="submit" value="Upload PDF">
+        </form>
+        <div id="uploadMessage" style="color: red; margin-top: 10px;"></div>
+      </div>
+      <script>
+        document.getElementById('uploadForm').onsubmit = async function(event) {
+          event.preventDefault();
+          const formData = new FormData(this);
+          const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+          });
+          const result = await response.json();
+          const messageDiv = document.getElementById('uploadMessage');
+          if (result.error) {
+            messageDiv.textContent = result.error;
+          } else {
+            messageDiv.textContent = '';
+            location.reload();
+          }
+        };
+      </script>
+      <div class="file-list">
+    `);
+
     const escapeHTML = untrusted =>
-      // Escape untrusted input so that it can safely be used in a HTML response
-      // in HTML and in HTML attributes.
       untrusted
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
@@ -241,50 +360,67 @@ class WebServer {
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
 
+    // List files from Supabase
     for (const file of files) {
-      let stat;
-      const item = url.pathname + file;
-      let href = "";
-      let label = "";
-      let extraAttributes = "";
+      const filename = file.name;
+      // Get public URL for the file
+      const { data } = this.supabase.storage
+        .from('pdfs')
+        .getPublicUrl(filename);
 
-      try {
-        stat = fs.statSync(new URL(file, localUrl));
-      } catch (ex) {
-        href = encodeURI(item);
-        label = `${file} (${ex})`;
-        extraAttributes = ' style="color:red"';
-      }
+      const publicUrl = new URL(data.publicUrl);
+      // Add cache busting parameter using the file's last modified time
+      publicUrl.searchParams.set('v', file.updated_at || Date.now());
+      
+      // Properly encode the URL and add necessary parameters
+      const viewerUrl = `/web/viewer.html?file=${encodeURIComponent(publicUrl.toString())}&disableRange=true`;
 
-      if (stat) {
-        if (stat.isDirectory()) {
-          href = encodeURI(item);
-          label = file;
-        } else if (path.extname(file).toLowerCase() === ".pdf") {
-          href = `/web/viewer.html?file=${encodeURIComponent(item)}`;
-          label = file;
-          extraAttributes = ' target="pdf"';
-        } else if (all) {
-          href = encodeURI(item);
-          label = file;
-        }
-      }
-
-      if (label) {
-        response.write(
-          `<a href="${escapeHTML(href)}"${extraAttributes}>${escapeHTML(label)}</a><br>`
-        );
-      }
+      response.write(
+        `<div class="file-item">
+          <a href="${viewerUrl}" target="_blank">${escapeHTML(filename)}</a>
+          <button onclick="deleteFile('${escapeHTML(filename)}')" class="delete-button">
+            Delete
+          </button>
+        </div>`
+      );
     }
+
+    response.write('</div>');
 
     if (files.length === 0) {
       response.write("<p>No files found</p>");
     }
-    if (!all && !url.searchParams.has("side")) {
-      response.write(
-        '<hr><p>(only PDF files are shown, <a href="?all">show all</a>)</p>'
-      );
-    }
+
+    // Add delete functionality script
+    response.write(`
+      <script>
+        async function deleteFile(filename) {
+          if (!confirm('Delete ' + filename + '?')) {
+            return;
+          }
+          
+          try {
+            const response = await fetch('/delete', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({ filename })
+            });
+            
+            if (!response.ok) {
+              const data = await response.json();
+              throw new Error(data.error || 'Delete failed');
+            }
+            
+            location.reload();
+          } catch (error) {
+            alert(error.message);
+          }
+        }
+      </script>
+    `);
+
     response.end("</body></html>");
   }
 
@@ -349,6 +485,132 @@ class WebServer {
   #getContentType(fileURL) {
     const extension = path.extname(fileURL.pathname).toLowerCase();
     return MIME_TYPES[extension] || DEFAULT_MIME_TYPE;
+  }
+
+  async #handleUpload(request, response) {
+    if (request.method !== "POST") {
+      response.writeHead(405);
+      response.end();
+      return;
+    }
+
+    const contentType = request.headers["content-type"];
+    const boundary = contentType.split("; boundary=")[1];
+
+    const chunks = [];
+    request.on("data", chunk => chunks.push(chunk));
+    
+    request.on("end", async () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        
+        // Split the multipart data using the boundary
+        const parts = buffer.toString().split(`--${boundary}`);
+        
+        // Find the PDF file part
+        const pdfPart = parts.find(part => 
+          part.includes('Content-Type: application/pdf') || 
+          part.includes('name="pdf"')
+        );
+
+        if (!pdfPart) {
+          response.writeHead(400, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ error: "No PDF file found in upload" }));
+          return;
+        }
+
+        // Get the filename
+        const filenameMatch = pdfPart.match(/filename="([^"]+)"/);
+        const filename = filenameMatch ? filenameMatch[1] : "uploaded.pdf";
+
+        // Check if file already exists
+        const { data: existingFiles, error: listError } = await this.supabase.storage
+          .from('pdfs')
+          .list('', {
+            limit: 1,
+            search: filename
+          });
+
+        if (listError) {
+          throw listError;
+        }
+
+        if (existingFiles.length > 0) {
+          response.writeHead(409, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ error: "A file with the same name already exists." }));
+          return;
+        }
+
+        // Extract the raw binary data
+        const fileContent = buffer.slice(
+          buffer.indexOf(Buffer.from([13, 10, 13, 10])) + 4,
+          buffer.lastIndexOf(Buffer.from(`--${boundary}--`)) - 2
+        );
+
+        // Upload to Supabase storage
+        const { data, error } = await this.supabase.storage
+          .from('pdfs')
+          .upload(filename, fileContent, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        // Send success response
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ success: true }));
+
+      } catch (error) {
+        console.error("Upload error:", error);
+        response.writeHead(500, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: "Upload failed: " + error.message }));
+      }
+    });
+  }
+
+  async #handleDelete(request, response) {
+    if (request.method !== "POST") {
+      response.writeHead(405, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
+
+    const chunks = [];
+    request.on("data", chunk => chunks.push(chunk));
+    
+    request.on("end", async () => {
+      try {
+        const data = Buffer.concat(chunks).toString();
+        const params = new URLSearchParams(data);
+        const filename = params.get("filename");
+
+        if (!filename) {
+          response.writeHead(400, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ error: "No filename provided" }));
+          return;
+        }
+
+        // Delete from Supabase storage
+        const { error } = await this.supabase.storage
+          .from('pdfs')
+          .remove([filename]);
+
+        if (error) {
+          throw error;
+        }
+
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ success: true }));
+
+      } catch (error) {
+        console.error("Delete error:", error);
+        response.writeHead(500, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: "Delete failed: " + error.message }));
+      }
+    });
   }
 }
 

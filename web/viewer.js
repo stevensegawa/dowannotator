@@ -274,6 +274,83 @@ if (
   document.addEventListener("DOMContentLoaded", webViewerLoad, true);
 }
 
+document.getElementById('updateButton').addEventListener('click', async () => {
+  const url = PDFViewerApplication.url;
+  if (!url) {
+    alert('No file is currently open');
+    return;
+  }
+  
+  const filename = url.split('/').pop();
+  if (!filename) {
+    alert('Could not determine filename');
+    return;
+  }
+
+  try {
+    // Save the current state with all edits
+    const pdfData = await PDFViewerApplication.pdfDocument.saveDocument();
+    if (!pdfData) {
+      throw new Error('Could not save PDF data');
+    }
+
+    // Create a blob from the saved PDF data
+    const pdfBlob = new Blob([pdfData], { type: 'application/pdf' });
+
+    // Delete the existing file
+    const deleteResponse = await fetch('/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ filename })
+    });
+    
+    if (!deleteResponse.ok) {
+      const errorData = await deleteResponse.json().catch(() => ({ error: 'Unknown error occurred' }));
+      throw new Error(errorData.error || `Delete failed with status ${deleteResponse.status}`);
+    }
+
+    // Upload the current PDF data
+    const formData = new FormData();
+    formData.append('pdf', pdfBlob, filename);
+
+    const uploadResponse = await fetch('/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!uploadResponse.ok) {
+      const errorData = await uploadResponse.json().catch(() => ({ error: 'Unknown error occurred' }));
+      throw new Error(errorData.error || `Upload failed with status ${uploadResponse.status}`);
+    }
+
+    const uploadResult = await uploadResponse.json();
+    if (uploadResult.error) {
+      throw new Error(uploadResult.error);
+    }
+
+    alert('File updated successfully!');
+    
+    // Add cache-busting parameter to both the viewer URL and the PDF file URL
+    const timestamp = Date.now();
+    const currentUrl = new URL(window.location.href);
+    const fileUrl = new URL(url);
+    
+    // Add cache busting to both URLs
+    currentUrl.searchParams.set('t', timestamp);
+    fileUrl.searchParams.set('t', timestamp);
+    
+    // Update the file parameter in the viewer URL
+    currentUrl.searchParams.set('file', fileUrl.toString());
+    
+    // Navigate to the new URL
+    window.location.href = currentUrl.toString();
+
+  } catch (error) {
+    console.error('Update error:', error);
+    alert(error.message || 'An error occurred while updating the file.');
+  }
+});
+
 export {
   PDFViewerApplication,
   AppConstants as PDFViewerApplicationConstants,
