@@ -23,6 +23,10 @@ import http from "http";
 import path from "path";
 import { pathToFileURL } from "url";
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 const MIME_TYPES = {
   ".css": "text/css",
@@ -48,7 +52,7 @@ class WebServer {
     const cwdURL = pathToFileURL(process.cwd()) + "/";
     this.rootURL = new URL(`${root || "."}/`, cwdURL);
     this.host = host || "localhost";
-    this.port = port || 0;
+    this.port = port || 8888;
     this.server = null;
     this.verbose = false;
     this.cacheExpirationTime = cacheExpirationTime || 0;
@@ -58,10 +62,11 @@ class WebServer {
       POST: [],
     };
 
-    // Add Supabase configuration
-    const supabaseUrl = 'https://kazsquqfjxrkpzelptxv.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthenNxdXFmanhya3B6ZWxwdHh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcxMDA5MTgsImV4cCI6MjA1MjY3NjkxOH0.s1aKodToiu4SBPjM6fWI1SEEpHvc7eOY8addbJNm-Yo';
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+    // Initialize Supabase client with environment variables
+    this.supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    );
   }
 
   start(callback) {

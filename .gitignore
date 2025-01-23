@@ -1,9 +1,22 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+
+# Build output
+build/
+dist/
+
+# Vercel
+.vercel
+
 *~
 local.mk
-build/
 tags
 .DS_Store
 Makefile
-node_modules/
 examples/node/svgdump/
 examples/node/pdf2png/*.png
