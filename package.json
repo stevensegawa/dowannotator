@@ -1,5 +1,5 @@
 {
-  "name": "pdf.js",
+  "name": "defenders-of-wildlife-pdf-viewer",
   "type": "module",
   "scripts": {
     "build": "npx gulp generic",

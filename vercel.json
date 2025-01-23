@@ -1,0 +1,28 @@
+{
+    "version": 2,
+    "buildCommand": "npx gulp generic",
+    "outputDirectory": "build/generic",
+    "public": true,
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "headers": [
+      {
+        "source": "/(.*)",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET, POST, DELETE, OPTIONS"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      { "source": "/", "destination": "/web/viewer.html" },
+      { "source": "/web/pdfs", "destination": "/web/viewer.html" },
+      { "source": "/:path*", "destination": "/:path*" }
+    ]
+  } 
