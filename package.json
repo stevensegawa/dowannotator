@@ -1,6 +1,10 @@
 {
   "name": "pdf.js",
   "type": "module",
+  "scripts": {
+    "build": "npx gulp generic",
+    "start": "npx gulp server"
+  },
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.26.0",
